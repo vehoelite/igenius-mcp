@@ -10,6 +10,10 @@ persistent memory via the [iGenius Memory](https://igenius-memory.com) service.
 
 No database, no LLM, no local backend required — just an API key.
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/vehoelite/igenius-vscode/main/igenius-motion_sm.gif" alt="iGenius Memory" width="600">
+</p>
+
 ## Quick Start
 
 ```bash
