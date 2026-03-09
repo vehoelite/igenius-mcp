@@ -74,6 +74,39 @@ MCP-compatible agent.
 | `IGENIUS_API_KEY` | Yes | — |
 | `IGENIUS_API_URL` | No | `https://igenius-memory.online/v1` |
 
+## Visual Tools (Optional)
+
+Give your AI agent **eyes** — render any URL, take a pixel-perfect screenshot,
+and get instant UI/UX analysis from a local vision model.
+
+### Install
+
+```bash
+pip install "igenius-mcp[visual]"
+python -m playwright install chromium
+```
+
+Then load a vision-capable model in [LM Studio](https://lmstudio.ai)
+(e.g. `Qwen2.5-VL-7B-Instruct`).
+
+### Visual MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `visual_report` | Render URL → screenshot → vision analysis → full UI/UX report |
+| `visual_screenshot` | Render URL → return base64-encoded PNG (no analysis) |
+
+### Visual Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `IGENIUS_VISION_URL` | `http://localhost:1234/v1` | Vision model API endpoint |
+| `IGENIUS_VISION_MODEL` | *auto-detect* | Override the vision model name |
+| `IGENIUS_VIEWPORT_W` | `1280` | Screenshot viewport width |
+| `IGENIUS_VIEWPORT_H` | `800` | Screenshot viewport height |
+
+> **100% local** — screenshots and analysis never leave your machine.
+
 ## Agent Instructions
 
 For best results, add the iGenius agent instructions to your workspace:
@@ -110,6 +143,18 @@ Details at [igenius-memory.store](https://igenius-memory.store)
 - [Documentation](https://igenius-memory.info)
 - [API Portal](https://igenius-memory.online)
 - [Store & Plans](https://igenius-memory.store)
+
+## Support the Project
+
+iGenius Memory is built and maintained by [NovaMind Labs](https://github.com/vehoelite).
+If you find it useful, here's how you can help:
+
+- **Star the repo** — it helps more developers discover iGenius
+- **Upgrade to Pro** — $19/mo directly funds development → [igenius-memory.store](https://igenius-memory.store)
+- **Report bugs & ideas** — [open an issue](https://github.com/vehoelite/igenius-mcp/issues)
+- **Spread the word** — tell your friends, tweet about it, write a blog post
+
+Every user, star, and subscription helps keep iGenius alive and improving. Thank you!
 
 ## License
 
