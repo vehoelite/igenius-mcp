@@ -1,5 +1,10 @@
 # iGenius MCP — Thin Memory Server for VS Code
 
+[![PyPI](https://img.shields.io/pypi/v/igenius-mcp?color=blue)](https://pypi.org/project/igenius-mcp/)
+[![Python](https://img.shields.io/pypi/pyversions/igenius-mcp)](https://pypi.org/project/igenius-mcp/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![GitHub](https://img.shields.io/github/stars/vehoelite/igenius-mcp?style=social)](https://github.com/vehoelite/igenius-mcp)
+
 A lightweight MCP (Model Context Protocol) server that gives AI agents
 persistent memory via the [iGenius Memory](https://igenius-memory.com) service.
 
