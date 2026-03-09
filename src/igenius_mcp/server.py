@@ -288,6 +288,91 @@ TOOLS: list[Tool] = [
     ),
 ]
 
+# \u2500 Visual Tools (run locally \u2014 Playwright + vision model) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+VISUAL_TOOLS: list[Tool] = [
+    Tool(
+        name="visual_report",
+        description=(
+            "Render HTML/URL in a headless browser, screenshot it, and send the "
+            "screenshot to a local vision AI for a detailed UI/UX analysis report. "
+            "Returns layout issues, visual bugs, contrast problems, and fix suggestions. "
+            "As seamless as a syntax check \u2014 one call, full visual feedback. "
+            "Requires: pip install igenius-mcp[visual] && playwright install chromium"
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "html": {
+                    "type": "string",
+                    "description": "Raw HTML string to render. Use this OR file OR url.",
+                },
+                "file": {
+                    "type": "string",
+                    "description": "Absolute path to an HTML file to render.",
+                },
+                "url": {
+                    "type": "string",
+                    "description": "URL to screenshot (e.g. http://localhost:3000).",
+                },
+                "focus": {
+                    "type": "string",
+                    "description": "Optional focus area for the analysis (e.g. 'navbar alignment', 'mobile layout', 'color contrast').",
+                },
+                "viewport_width": {
+                    "type": "integer",
+                    "description": "Browser viewport width in pixels (default: 1280).",
+                },
+                "viewport_height": {
+                    "type": "integer",
+                    "description": "Browser viewport height in pixels (default: 900).",
+                },
+                "full_page": {
+                    "type": "boolean",
+                    "description": "Capture the full scrollable page (default: true).",
+                },
+            },
+        },
+    ),
+    Tool(
+        name="visual_screenshot",
+        description=(
+            "Render HTML/URL and return ONLY the base64 screenshot (no vision analysis). "
+            "Useful when you want to show the user what the UI looks like, or when "
+            "using your own vision capabilities. Returns a base64 PNG string."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "html": {
+                    "type": "string",
+                    "description": "Raw HTML string to render. Use this OR file OR url.",
+                },
+                "file": {
+                    "type": "string",
+                    "description": "Absolute path to an HTML file to render.",
+                },
+                "url": {
+                    "type": "string",
+                    "description": "URL to screenshot (e.g. http://localhost:3000).",
+                },
+                "viewport_width": {
+                    "type": "integer",
+                    "description": "Browser viewport width in pixels (default: 1280).",
+                },
+                "viewport_height": {
+                    "type": "integer",
+                    "description": "Browser viewport height in pixels (default: 900).",
+                },
+                "full_page": {
+                    "type": "boolean",
+                    "description": "Capture the full scrollable page (default: true).",
+                },
+            },
+        },
+    ),
+]
+
 
 # ─── Tool Dispatch ──────────────────────────────────────────────────────────────
 
@@ -310,15 +395,31 @@ ROUTE_MAP: dict[str, tuple[str, str]] = {
 }
 
 
+def _has_playwright() -> bool:
+    """Check if playwright is installed."""
+    try:
+        import playwright  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
 @server.list_tools()
 async def list_tools() -> list[Tool]:
-    return TOOLS
+    tools = list(TOOLS)
+    if _has_playwright():
+        tools.extend(VISUAL_TOOLS)
+    return tools
 
 
 @server.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     try:
-        result = await _dispatch(name, arguments)
+        # Visual tools run locally — not proxied to REST
+        if name in ("visual_report", "visual_screenshot"):
+            result = await _dispatch_visual(name, arguments)
+        else:
+            result = await _dispatch(name, arguments)
         return [TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
     except httpx.HTTPStatusError as e:
         detail = e.response.text
@@ -372,6 +473,52 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
 
     resp.raise_for_status()
     return resp.json()
+
+
+# ─── Visual Dispatch ────────────────────────────────────────────────────────────
+
+async def _dispatch_visual(name: str, args: dict[str, Any]) -> Any:
+    """Handle visual tool calls locally."""
+    from .visual import visual_report as _visual_report, render_screenshot
+    import base64
+
+    # Normalise args
+    kwargs: dict[str, Any] = {}
+    if args.get("html"):
+        kwargs["html"] = args["html"]
+    elif args.get("file"):
+        kwargs["file"] = args["file"]
+    elif args.get("url"):
+        kwargs["url"] = args["url"]
+    else:
+        return {"error": "Provide one of: html, file, or url"}
+
+    if args.get("viewport_width"):
+        kwargs["viewport_w"] = args["viewport_width"]
+    if args.get("viewport_height"):
+        kwargs["viewport_h"] = args["viewport_height"]
+    if "full_page" in args:
+        kwargs["full_page"] = args["full_page"]
+
+    if name == "visual_report":
+        if args.get("focus"):
+            kwargs["focus"] = args["focus"]
+        return await _visual_report(**kwargs)
+
+    elif name == "visual_screenshot":
+        # Return just the base64 screenshot
+        try:
+            png_bytes = await render_screenshot(**kwargs)
+            b64 = base64.b64encode(png_bytes).decode("utf-8")
+            return {
+                "screenshot_base64": b64,
+                "size_kb": round(len(png_bytes) / 1024, 1),
+                "viewport": f"{kwargs.get('viewport_w', 1280)}x{kwargs.get('viewport_h', 900)}",
+            }
+        except Exception as e:
+            return {"error": str(e), "step": "render"}
+
+    return {"error": f"Unknown visual tool: {name}"}
 
 
 # ─── Entry point ────────────────────────────────────────────────────────────────
