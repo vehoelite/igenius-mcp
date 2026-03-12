@@ -8,7 +8,8 @@
 A lightweight MCP (Model Context Protocol) server that gives AI agents
 persistent memory via the [iGenius Memory](https://igenius-memory.com) service.
 
-No database, no LLM, no local backend required — just an API key.
+Core memory tools require only an API key — all AI processing happens server-side.
+Optional visual tools add local Playwright rendering and vision-model analysis.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/vehoelite/igenius-vscode/main/igenius-motion_sm.gif" alt="iGenius Memory" width="600">
@@ -123,17 +124,20 @@ Get the template at [igenius-memory.info](https://igenius-memory.info)
 Agent ←→ MCP (stdio) ←→ igenius-mcp ←→ REST API ←→ iGenius Backend
 ```
 
-This package is a **thin proxy** — it translates MCP tool calls into REST API
-requests. All processing (AI extraction, LLM summarization, encryption) happens
-server-side. Your data never touches the local machine.
+The memory tools are a **thin proxy** — they translate MCP tool calls into REST API
+requests. All AI extraction, LLM summarization, and encryption happens server-side.
+
+The visual tools run **locally** — Playwright renders URLs on your machine and a
+local vision model (e.g. LM Studio + Qwen2.5-VL) analyzes the screenshots.
+Screenshots and analysis never leave your machine.
 
 ## Plans
 
-| Plan | Price | Includes |
-|------|-------|----------|
-| Starter | Free | 50 memories, all 14 tools |
-| Pro | $19/mo | Unlimited memories, priority, encryption |
-| Enterprise | Contact | Custom deployment, SLA |
+| Plan | Price | Requests | API Keys | IPs/Key |
+|------|-------|----------|----------|---------|
+| Starter | Free | 1,000/week | 1 | 3 |
+| Pro | $19/mo | 50,000/day | 5 | 10 |
+| Enterprise | Contact | 500,000/day | 20 | 50 |
 
 Details at [igenius-memory.store](https://igenius-memory.store)
 

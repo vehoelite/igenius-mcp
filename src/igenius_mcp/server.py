@@ -2,8 +2,8 @@
 iGenius MCP Server — Thin REST-API proxy.
 
 Exposes all 14 iGenius Memory tools as MCP tools by forwarding requests to the
-hosted API at igenius-memory.online. Requires only an API key — no database,
-no LLM, no local backend.
+hosted API at igenius-memory.online. Core memory tools require only an API key.
+Optional visual tools add local Playwright rendering and vision-model analysis.
 
 Usage:
     pip install igenius-mcp
