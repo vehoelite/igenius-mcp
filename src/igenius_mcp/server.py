@@ -88,8 +88,7 @@ TOOLS: list[Tool] = [
         name="memory_briefing",
         description=(
             "Generate a smart, LLM-synthesised session briefing from ALL memory layers. "
-            "Call this FIRST in every new conversation — it replaces the need to "
-            "call memory_recall + memory_summarize separately. "
+            "Call this IMMEDIATELY AFTER memory_consolidate at every session start. "
             "Results are cached and only regenerated when underlying memories change."
         ),
         inputSchema={
@@ -131,7 +130,8 @@ TOOLS: list[Tool] = [
         name="memory_consolidate",
         description=(
             "Consolidate all accumulated interaction summaries into a master briefing. "
-            "Call this before context resets or when context is getting full."
+            "Call this FIRST at every session start, before memory_briefing. "
+            "Also call when context is getting full."
         ),
         inputSchema={
             "type": "object",
