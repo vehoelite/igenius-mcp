@@ -46,7 +46,7 @@ Add to `~/.vscode/mcp.json`:
 }
 ```
 
-Restart VS Code — all 14 memory tools are now available to Copilot and any
+Restart VS Code — all 17 memory tools are now available to Copilot and any
 MCP-compatible agent.
 
 ## Available Tools
@@ -65,8 +65,39 @@ MCP-compatible agent.
 | `memory_update` | Update fields on an existing memory |
 | `memory_review` | List short-term memories for triage |
 | `memory_promote` | Promote short-term → long-term |
+| `memory_pin` | Pin a fact permanently (user-confirmed, never expires) |
 | `memory_triggers_list` | List trigger words and their layers |
 | `memory_triggers_add` | Add a new trigger word |
+
+## LLM Requirements
+
+iGenius uses an LLM backend for AI extraction, consolidation, and (optionally)
+visual analysis. You can use a **local** or **remote** LLM provider.
+
+### Local Setup (LM Studio, Ollama, etc.)
+
+| Requirement | Minimum |
+|---|---|
+| **GPU VRAM** | 6 GB+ |
+| **Recommended model** | Qwen 3.5 4B (non-thinking) or equivalent |
+| **Context window** | 3,000+ tokens |
+
+> **⚠️ IMPORTANT: Do NOT use thinking/reasoning models** (e.g. QwQ, DeepSeek R1,
+> o1, o3). Thinking models emit `<think>` chains before the actual response,
+> which **breaks iGenius's structured JSON extraction pipeline**. Only use
+> standard non-thinking (instruct/chat) models.
+
+> **Why these specs?** iGenius sends structured extraction prompts that expect
+> clean JSON output. A 4B-parameter non-thinking model at 3k context is the
+> sweet spot for fast, accurate extraction without hallucination or timeouts.
+> Larger models (8B+) work too — just ensure you have the VRAM headroom and
+> that the model is a **non-thinking** variant.
+
+### Remote Setup (OpenAI, Anthropic, Google, etc.)
+
+No local hardware requirements. Any API-accessible model works — configure the
+provider, model name, and API key in the VS Code extension settings or
+environment variables.
 
 ## Environment Variables
 
@@ -88,7 +119,9 @@ python -m playwright install chromium
 ```
 
 Then load a vision-capable model in [LM Studio](https://lmstudio.ai)
-(e.g. `Qwen2.5-VL-7B-Instruct`).
+(e.g. Qwen 3.5 9B Vision, non-thinking).
+
+> **⚠️ Do NOT use thinking/reasoning vision models** — same restriction as above.
 
 ### Visual MCP Tools
 
