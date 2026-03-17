@@ -87,9 +87,12 @@ TOOLS: list[Tool] = [
     Tool(
         name="memory_briefing",
         description=(
-            "Generate a smart, LLM-synthesised session briefing from ALL memory layers. "
-            "Call this IMMEDIATELY AFTER memory_consolidate at every session start. "
-            "Results are cached and only regenerated when underlying memories change."
+            "Return the latest consolidated briefing with pinned facts prepended. "
+            "This is a PURE READER — no LLM call, no mutations.  It serves: "
+            "(1) Pinned facts verbatim, (2) Consolidated briefing prose from last "
+            "memory_consolidate, (3) Suggested pins for user review, (4) Live stats. "
+            "Call memory_consolidate first, then this to read the result. "
+            "ALWAYS pass 'project' to get the briefing for the current workspace."
         ),
         inputSchema={
             "type": "object",
@@ -97,6 +100,10 @@ TOOLS: list[Tool] = [
                 "force": {
                     "type": "boolean",
                     "description": "Force regeneration even if memories haven't changed (default: false).",
+                },
+                "project": {
+                    "type": "string",
+                    "description": "Project/workspace name. Returns briefing scoped to this project + global context.",
                 },
             },
         },
@@ -108,7 +115,8 @@ TOOLS: list[Tool] = [
             "This is the CORE tool — call it for EVERY user prompt, agent response, "
             "tool result, or system message. The AI reads the message, extracts "
             "facts, decisions, credentials, file paths, preferences, and context, "
-            "then stores a smart summary as persistent memory."
+            "then stores a smart summary as short-term memory scoped to the current project. "
+            "ALWAYS pass the 'project' parameter so memories stay isolated per workspace."
         ),
         inputSchema={
             "type": "object",
@@ -122,6 +130,14 @@ TOOLS: list[Tool] = [
                     "enum": ["user", "agent", "tool", "system"],
                     "description": "Who sent this message (default: user).",
                 },
+                "project": {
+                    "type": "string",
+                    "description": (
+                        "Project/workspace name to scope this memory to. "
+                        "Use the workspace folder name (e.g. 'my-app', 'igenius'). "
+                        "Omit for global memories visible in all projects."
+                    ),
+                },
             },
             "required": ["message"],
         },
@@ -129,9 +145,10 @@ TOOLS: list[Tool] = [
     Tool(
         name="memory_consolidate",
         description=(
-            "Consolidate all accumulated interaction summaries into a master briefing. "
+            "Consolidate all short-term interaction summaries into a master briefing. "
             "Call this FIRST at every session start, before memory_briefing. "
-            "Also call when context is getting full."
+            "Also call when context is getting full. "
+            "ALWAYS pass the 'project' parameter to scope consolidation to the current workspace."
         ),
         inputSchema={
             "type": "object",
@@ -139,6 +156,10 @@ TOOLS: list[Tool] = [
                 "force": {
                     "type": "boolean",
                     "description": "Force regeneration even if nothing new (default: false).",
+                },
+                "project": {
+                    "type": "string",
+                    "description": "Project/workspace name to scope consolidation to. Omit for global.",
                 },
             },
         },
@@ -177,6 +198,10 @@ TOOLS: list[Tool] = [
                 "content": {"type": "string", "description": "Full memory content."},
                 "category": {"type": "string"},
                 "importance": {"type": "integer", "minimum": 0, "maximum": 100},
+                "project": {
+                    "type": "string",
+                    "description": "Project scope. Omit for global memory.",
+                },
             },
             "required": ["layer", "title", "content"],
         },
@@ -191,6 +216,10 @@ TOOLS: list[Tool] = [
             "properties": {
                 "query": {"type": "string", "description": "Search query."},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 100},
+                "project": {
+                    "type": "string",
+                    "description": "Project scope. Returns project-scoped + global results.",
+                },
             },
             "required": ["query"],
         },
@@ -198,9 +227,18 @@ TOOLS: list[Tool] = [
     Tool(
         name="memory_recall",
         description=(
-            "Retrieve all active persistent memories (interaction extracts from current session)."
+            "Retrieve all active short-term memories (interaction extracts from current session). "
+            "For consolidated briefing, use memory_briefing instead."
         ),
-        inputSchema={"type": "object", "properties": {}},
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "project": {
+                    "type": "string",
+                    "description": "Project scope. Returns project-scoped + global memories.",
+                },
+            },
+        },
     ),
     Tool(
         name="memory_summarize",
@@ -254,6 +292,10 @@ TOOLS: list[Tool] = [
             "type": "object",
             "properties": {
                 "limit": {"type": "integer", "minimum": 1, "maximum": 200},
+                "project": {
+                    "type": "string",
+                    "description": "Project scope. Returns project-scoped + global memories.",
+                },
             },
         },
     ),
@@ -284,6 +326,50 @@ TOOLS: list[Tool] = [
                 "description": {"type": "string"},
             },
             "required": ["word", "target_layer"],
+        },
+    ),
+    Tool(
+        name="memory_pin",
+        description=(
+            "Pin a fact permanently. Pinned memories NEVER expire, are always "
+            "encrypted, and appear at the top of every briefing. IMPORTANT: "
+            "Only call this after the USER has explicitly confirmed they want "
+            "the fact pinned.\n\n"
+            "PROJECT SCOPING: Ask the user 'Pin this globally or just for "
+            "[current project]?' — global pins (omit project) appear in ALL "
+            "project briefings; project-scoped pins appear only in that project."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "Short title for the pinned fact (max 512 chars).",
+                },
+                "content": {
+                    "type": "string",
+                    "description": "The fact to pin permanently.",
+                },
+                "category": {
+                    "type": "string",
+                    "description": "Optional category (credential, identity, config, etc.).",
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional tags for filtering.",
+                },
+                "project": {
+                    "type": "string",
+                    "description": (
+                        "Project scope for the pin. Omit or null = GLOBAL pin "
+                        "(visible in every project). Set to a project name for "
+                        "a project-specific pin. The agent MUST ask the user "
+                        "which they prefer."
+                    ),
+                },
+            },
+            "required": ["title", "content"],
         },
     ),
 ]
@@ -384,7 +470,7 @@ ROUTE_MAP: dict[str, tuple[str, str]] = {
     "memory_process":        ("POST", "/process"),
     "memory_store":          ("POST", "/memories"),
     "memory_search":         ("GET",  "/memories/search"),
-    "memory_recall":         ("GET",  "/memories/layer/persistent"),
+    "memory_recall":         ("GET",  "/memories/layer/short_term"),
     "memory_summarize":      ("POST", "/memories/summarize"),
     "memory_delete":         ("DELETE", "/memories/{memory_id}"),
     "memory_update":         ("PATCH",  "/memories/{memory_id}"),
@@ -392,6 +478,7 @@ ROUTE_MAP: dict[str, tuple[str, str]] = {
     "memory_promote":        ("POST", "/memories/{memory_id}/promote"),
     "memory_triggers_list":  ("GET",  "/triggers"),
     "memory_triggers_add":   ("POST", "/triggers"),
+    "memory_pin":            ("POST", "/memories"),
 }
 
 
@@ -441,6 +528,21 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
     method, path_template = route
     client = _get_client()
 
+    # Special handling: memory_pin -> store with layer=pinned
+    if name == "memory_pin":
+        args = {
+            "layer": "pinned",
+            "title": args["title"],
+            "content": args["content"],
+            "category": args.get("category", "pinned"),
+            "tags": args.get("tags", ["pinned"]),
+            "importance": 100,
+            "project": args.get("project"),
+        }
+
+    # Extract project for query param use on GET/consolidate/summarize
+    project = args.pop("project", None)
+
     # Substitute path params like {memory_id}
     path = path_template
     path_args = {}
@@ -454,8 +556,9 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
     if method == "GET":
         # Convert remaining args to query params
         params = {}
-        if name == "memory_briefing" and args.get("force"):
-            params["force"] = "true"
+        if name == "memory_briefing":
+            if args.get("force"):
+                params["force"] = "true"
         elif name == "memory_search":
             params["q"] = args.get("query", "")
             if args.get("limit"):
@@ -463,13 +566,30 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
         elif name == "memory_review":
             if args.get("limit"):
                 params["limit"] = str(args["limit"])
+        elif name == "memory_recall":
+            pass  # no extra params beyond project
+        # Always add project to GET query params
+        if project:
+            params["project"] = project
         resp = await client.get(path, params=params)
     elif method == "DELETE":
         resp = await client.delete(path)
     elif method == "PATCH":
         resp = await client.patch(path, json=args)
     else:
-        resp = await client.post(path, json=args)
+        # POST: include project in JSON body
+        if project is not None:
+            args["project"] = project
+        # consolidate uses query params, not body
+        if name == "memory_consolidate":
+            params = {}
+            if args.get("force"):
+                params["force"] = "true"
+            if project:
+                params["project"] = project
+            resp = await client.post(path, params=params)
+        else:
+            resp = await client.post(path, json=args)
 
     resp.raise_for_status()
     return resp.json()
