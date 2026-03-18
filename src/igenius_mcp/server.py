@@ -50,6 +50,13 @@ from mcp.types import TextContent, Tool
 API_BASE = os.environ.get("IGENIUS_API_URL", "https://igenius-memory.online/v1")
 API_KEY = os.environ.get("IGENIUS_API_KEY", "")
 
+# LLM override env vars — forwarded as X-LLM-* headers so the server uses
+# the user's chosen model instead of the server-side default.
+LLM_PROVIDER = os.environ.get("IGENIUS_LLM_PROVIDER", "")
+LLM_MODEL = os.environ.get("IGENIUS_LLM_MODEL", "")
+LLM_API_KEY = os.environ.get("IGENIUS_LLM_API_KEY", "")
+LLM_BASE_URL = os.environ.get("IGENIUS_LLM_BASE_URL", "")
+
 if not API_KEY:
     print(
         "ERROR: IGENIUS_API_KEY environment variable is required.\n"
@@ -65,13 +72,23 @@ _client: httpx.AsyncClient | None = None
 def _get_client() -> httpx.AsyncClient:
     global _client
     if _client is None or _client.is_closed:
+        headers = {
+            "X-API-Key": API_KEY,
+            "Content-Type": "application/json",
+            "User-Agent": "iGenius-MCP/0.1.0",
+        }
+        # Inject LLM override headers when configured
+        if LLM_PROVIDER:
+            headers["X-LLM-Provider"] = LLM_PROVIDER
+        if LLM_MODEL:
+            headers["X-LLM-Model"] = LLM_MODEL
+        if LLM_API_KEY:
+            headers["X-LLM-Api-Key"] = LLM_API_KEY
+        if LLM_BASE_URL:
+            headers["X-LLM-Base-Url"] = LLM_BASE_URL
         _client = httpx.AsyncClient(
             base_url=API_BASE,
-            headers={
-                "X-API-Key": API_KEY,
-                "Content-Type": "application/json",
-                "User-Agent": "iGenius-MCP/0.1.0",
-            },
+            headers=headers,
             timeout=120.0,
         )
     return _client
