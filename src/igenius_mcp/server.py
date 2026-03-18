@@ -14,11 +14,22 @@ Or configure in VS Code mcp.json:
       "servers": {
         "igenius-memory": {
           "command": "igenius-mcp",
-          "env": { "IGENIUS_API_KEY": "ig_xxx" },
+          "env": {
+            "IGENIUS_API_KEY": "ig_xxx",
+            "IGENIUS_PROJECT": "my-app"
+          },
           "type": "stdio"
         }
       }
     }
+
+Environment Variables:
+    IGENIUS_API_KEY    — Required. Your API key.
+    IGENIUS_API_URL    — Optional. Override the API base URL (default: igenius-memory.online).
+    IGENIUS_PROJECT    — Optional. Default project scope for all memory operations.
+                         Used as a fallback when the agent doesn't pass a project
+                         parameter. Great for smaller models (1B-4B) that may not
+                         consistently pass the project field.
 """
 
 from __future__ import annotations
@@ -541,7 +552,17 @@ async def _dispatch(name: str, args: dict[str, Any]) -> Any:
         }
 
     # Extract project for query param use on GET/consolidate/summarize
-    project = args.pop("project", None)
+    # Use a sentinel so we can tell "agent didn't pass project" apart from
+    # "agent explicitly passed project=null" (meaning global/unscoped).
+    _NO_PROJECT = object()
+    project = args.pop("project", _NO_PROJECT)
+
+    if project is _NO_PROJECT:
+        # Agent didn't pass project at all — fall back to env var
+        project = os.environ.get("IGENIUS_PROJECT")
+    elif not project:
+        # Agent explicitly passed null / empty string — means global scope
+        project = None
 
     # Substitute path params like {memory_id}
     path = path_template
