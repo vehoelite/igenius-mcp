@@ -1,39 +1,56 @@
-# iGenius MCP — Thin Memory Server for VS Code
+# iGenius Memory — Persistent AI Memory for Any Agent
 
 [![PyPI](https://img.shields.io/pypi/v/igenius-mcp?color=blue)](https://pypi.org/project/igenius-mcp/)
 [![Python](https://img.shields.io/pypi/pyversions/igenius-mcp)](https://pypi.org/project/igenius-mcp/)
+[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/igenius-memory.igenius-memory?label=VS%20Code&color=blue)](https://marketplace.visualstudio.com/items?itemName=igenius-memory.igenius-memory)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![GitHub](https://img.shields.io/github/stars/vehoelite/igenius-mcp?style=social)](https://github.com/vehoelite/igenius-mcp)
 
-A lightweight MCP (Model Context Protocol) server that gives AI agents
+A structured, AI-powered memory backend that gives any MCP-compatible agent
 persistent memory via the [iGenius Memory](https://igenius-memory.com) service.
-
-Core memory tools require only an API key — all AI processing happens server-side.
-Optional visual tools add local Playwright rendering and vision-model analysis.
+All AI processing happens server-side — you just need an API key.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/vehoelite/igenius-vscode/main/igenius-motion_sm.gif" alt="iGenius Memory" width="600">
 </p>
 
-## Quick Start
+---
+
+## 3 Ways to Use iGenius
+
+| Client | Install | Best For |
+|--------|---------|----------|
+| **🧩 VS Code Extension** | [Marketplace](https://marketplace.visualstudio.com/items?itemName=igenius-memory.igenius-memory) | Full sidebar UI, memory browser, AI provider settings |
+| **⚡ MCP Server** | `pip install igenius-mcp` | Any MCP client — VS Code, Claude Desktop, Cursor, Windsurf |
+| **🖥️ Desktop App** | [Windows Installer](https://github.com/vehoelite/igenius-desktop/releases/latest) | Standalone system-tray app, works with any editor |
+
+> **Get a free API key** at [igenius-memory.online](https://igenius-memory.online#apikey) — all three clients use the same key.
+
+---
+
+### 1. VS Code Extension (Marketplace)
+
+Install directly from the VS Code Marketplace — no pip, no config files:
+
+```
+ext install igenius-memory.igenius-memory
+```
+
+Or search **"iGenius Memory"** in the Extensions panel. Includes sidebar UI,
+memory browser, status bar indicator, AI provider settings, and auto-warms
+briefings on a configurable interval.
+
+### 2. MCP Server (pip)
+
+For any MCP-compatible client (VS Code Copilot, Claude Desktop, Cursor, Windsurf, etc.):
 
 ```bash
 pip install igenius-mcp
 ```
 
-Set your API key and run:
+Then add to your MCP config:
 
-```bash
-export IGENIUS_API_KEY=ig_your_key_here
-igenius-mcp
-```
-
-> **Get a free key** at [igenius-memory.online](https://igenius-memory.online#apikey)
-
-## VS Code Setup
-
-Add to `~/.vscode/mcp.json`:
-
+**VS Code** — `~/.vscode/mcp.json`:
 ```json
 {
   "servers": {
@@ -46,8 +63,32 @@ Add to `~/.vscode/mcp.json`:
 }
 ```
 
-Restart VS Code — all 17 memory tools are now available to Copilot and any
-MCP-compatible agent.
+**Claude Desktop / Cursor / Windsurf** — add to your MCP config file:
+```json
+{
+  "mcpServers": {
+    "igenius-memory": {
+      "command": "python",
+      "args": ["-m", "igenius_mcp.server"],
+      "env": { "IGENIUS_API_KEY": "ig_your_key_here" }
+    }
+  }
+}
+```
+
+> **⚠️ Windows users:** If VS Code can't find `igenius-mcp`, use `python -m igenius_mcp.server` instead.
+
+### 3. Desktop App (Windows)
+
+Standalone system-tray application — works alongside any editor or IDE:
+
+- **[Download Installer](https://github.com/vehoelite/igenius-desktop/releases/latest)** (NSIS setup or MSI)
+- Built with Tauri + Rust — lightweight, native, ~5 MB
+- System tray with quick access to briefings, search, and memory stats
+- Configure LLM provider (LM Studio, OpenAI, Anthropic, Google) from the UI
+
+Restart VS Code after installing the extension or adding MCP config — all 17
+memory tools become available to Copilot and any MCP-compatible agent.
 
 ## Available Tools
 
@@ -174,12 +215,20 @@ Screenshots and analysis never leave your machine.
 
 Details at [igenius-memory.store](https://igenius-memory.store)
 
+## Coming Soon
+
+**iGenius Context Engine** — unlimited effective context for local LLMs through
+intelligent recursive summarization. Run a 3B model with a 4K context window
+and handle conversations of any length.
+
 ## Links
 
 - [Landing Page](https://igenius-memory.com)
 - [Documentation](https://igenius-memory.info)
-- [API Portal](https://igenius-memory.online)
+- [API Portal & Free Key](https://igenius-memory.online)
 - [Store & Plans](https://igenius-memory.store)
+- [VS Code Extension](https://marketplace.visualstudio.com/items?itemName=igenius-memory.igenius-memory)
+- [Desktop App](https://github.com/vehoelite/igenius-desktop/releases/latest)
 
 ## Support the Project
 
