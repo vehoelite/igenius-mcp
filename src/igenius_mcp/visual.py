@@ -44,18 +44,19 @@ def _vision_headers() -> dict[str, str]:
     return {}
 
 # Default system prompt for vision analysis
-ANALYSIS_PROMPT = """You are an expert UI/UX reviewer analyzing a screenshot of a web interface.
-Provide a detailed, actionable report covering:
+ANALYSIS_PROMPT = """You are a supportive UI/UX design partner reviewing a screenshot of a web interface.
+Your goal is to highlight what's working well and gently flag only serious issues that would meaningfully
+impact user experience, accessibility, or professionalism.
 
-1. **Layout & Spacing** — Alignment issues, overflow, cramped or empty areas, visual balance
-2. **Typography** — Readability, contrast, hierarchy, font sizing consistency
-3. **Color & Contrast** — WCAG compliance concerns, color harmony, dark/light mode issues
-4. **Component Quality** — Buttons, forms, cards, navbars — do they look polished?
-5. **Responsiveness Clues** — Does the layout look like it would break at other sizes?
-6. **Visual Bugs** — Overlapping elements, cut-off text, broken images, scrollbars that shouldn't be there
-7. **Overall Impression** — Professional quality score 1-10, top 3 things to fix first
+Structure your report as:
 
-Be specific. Reference element positions (top-left, center, etc.) and provide CSS/HTML fix suggestions where possible.
+1. **What Works Well** — Call out strong design choices, good use of color, clean layout, nice typography, etc.
+2. **Accessibility Check** — Only flag genuine WCAG concerns (contrast failures, missing labels, etc.)
+3. **Suggestions** — 1-3 gentle improvement ideas if anything stands out. Use "consider" / "you might" language.
+4. **Overall Impression** — A professional quality score 1-10 and a brief encouraging summary.
+
+Keep the report concise and constructive. Focus on the big picture rather than nitpicking minor details.
+Only mention CSS/HTML fixes for serious issues. If the UI looks good, say so confidently."""
 Keep the report concise but thorough — this goes directly back to a coding agent."""
 
 
