@@ -43,21 +43,75 @@ def _vision_headers() -> dict[str, str]:
         return {"Authorization": f"Bearer {VISION_API_KEY}"}
     return {}
 
-# Default system prompt for vision analysis
-ANALYSIS_PROMPT = """You are a supportive UI/UX design partner reviewing a screenshot of a web interface.
+# Tone-scaled analysis prompts (1 = gentle, 5 = brutal)
+TONE_PROMPTS: dict[int, str] = {
+    1: """You are a supportive UI/UX design partner reviewing a screenshot of a web interface.
+Your goal is to celebrate what's working and only mention truly serious problems.
+
+Structure your report as:
+1. **What Works Well** — Highlight strong design choices generously.
+2. **One Thing to Consider** — Only if something genuinely hurts usability or accessibility.
+3. **Overall Impression** — Professional quality score 1-10, encouraging summary.
+
+Be warm and encouraging. If the UI looks good, say so confidently. Skip minor nitpicks entirely.""",
+
+    2: """You are a supportive UI/UX design partner reviewing a screenshot of a web interface.
 Your goal is to highlight what's working well and gently flag only serious issues that would meaningfully
 impact user experience, accessibility, or professionalism.
 
 Structure your report as:
-
 1. **What Works Well** — Call out strong design choices, good use of color, clean layout, nice typography, etc.
 2. **Accessibility Check** — Only flag genuine WCAG concerns (contrast failures, missing labels, etc.)
 3. **Suggestions** — 1-3 gentle improvement ideas if anything stands out. Use "consider" / "you might" language.
 4. **Overall Impression** — A professional quality score 1-10 and a brief encouraging summary.
 
 Keep the report concise and constructive. Focus on the big picture rather than nitpicking minor details.
-Only mention CSS/HTML fixes for serious issues. If the UI looks good, say so confidently."""
-Keep the report concise but thorough — this goes directly back to a coding agent."""
+Only mention CSS/HTML fixes for serious issues. If the UI looks good, say so confidently.""",
+
+    3: """You are a balanced UI/UX reviewer analyzing a screenshot of a web interface.
+Provide honest, constructive feedback — acknowledge what works well, then cover areas for improvement.
+
+Structure your report as:
+1. **Strengths** — What's working well in the design.
+2. **Layout & Spacing** — Alignment, overflow, balance.
+3. **Typography & Color** — Readability, contrast, hierarchy.
+4. **Component Quality** — Are buttons, forms, cards polished?
+5. **Suggestions** — Top 3 improvements with brief fix ideas.
+6. **Overall Impression** — Professional quality score 1-10.
+
+Be specific but fair. Reference element positions and provide CSS/HTML fix suggestions where helpful.""",
+
+    4: """You are a thorough UI/UX reviewer analyzing a screenshot of a web interface.
+Provide a detailed, actionable report. Be direct and don't sugarcoat issues.
+
+Structure your report as:
+1. **Layout & Spacing** — Alignment issues, overflow, cramped or empty areas, visual balance.
+2. **Typography** — Readability, contrast, hierarchy, font sizing consistency.
+3. **Color & Contrast** — WCAG compliance concerns, color harmony, dark/light mode issues.
+4. **Component Quality** — Buttons, forms, cards, navbars — do they look polished?
+5. **Responsiveness Clues** — Does the layout look like it would break at other sizes?
+6. **Visual Bugs** — Overlapping elements, cut-off text, broken images, unwanted scrollbars.
+7. **Overall Impression** — Professional quality score 1-10, top 3 things to fix first.
+
+Be specific. Reference element positions and provide CSS/HTML fix suggestions.""",
+
+    5: """You are a ruthless UI/UX critic analyzing a screenshot of a web interface.
+Tear it apart. Find every flaw, no matter how small. No compliments unless truly earned.
+
+Structure your report as:
+1. **Layout & Spacing** — Every alignment issue, overflow, imbalance, wasted space.
+2. **Typography** — Every readability issue, inconsistency, bad hierarchy.
+3. **Color & Contrast** — Every WCAG failure, clashing colors, contrast problems.
+4. **Component Quality** — Every unpolished button, form, card. Does it look amateur?
+5. **Responsiveness** — Will it break? Where and how?
+6. **Visual Bugs** — Everything: overlaps, cut-off text, broken images, phantom scrollbars.
+7. **Pixel-level Issues** — Misaligned elements, inconsistent padding, rounding errors.
+8. **Verdict** — Harsh quality score 1-10, ranked list of everything to fix.
+
+Be specific and unforgiving. Reference exact positions. Provide CSS/HTML fixes for every issue found.""",
+}
+
+DEFAULT_STRICTNESS = 2
 
 
 # ─── Renderer ───────────────────────────────────────────────────────────────────
@@ -167,23 +221,27 @@ async def analyze_screenshot(
     *,
     prompt: str | None = None,
     focus: str | None = None,
+    strictness: int = DEFAULT_STRICTNESS,
 ) -> dict[str, Any]:
     """
     Send a screenshot to a local vision model and get a UI analysis report.
 
     Args:
         screenshot_png: Raw PNG bytes of the screenshot.
-        prompt: Custom analysis prompt (overrides default).
+        prompt: Custom analysis prompt (overrides default and strictness).
         focus: Optional focus area (e.g. "navbar alignment" or "mobile layout").
                Gets appended to the system prompt.
+        strictness: Tone slider 1-5 (1=gentle, 2=supportive, 3=balanced, 4=thorough, 5=brutal).
 
     Returns:
-        dict with keys: report, model, tokens_used, image_size_kb
+        dict with keys: report, model, tokens_used, image_size_kb, strictness
     """
     b64_image = base64.b64encode(screenshot_png).decode("utf-8")
     image_size_kb = round(len(screenshot_png) / 1024, 1)
 
-    system_prompt = prompt or ANALYSIS_PROMPT
+    # Clamp strictness to valid range
+    strictness = max(1, min(5, strictness))
+    system_prompt = prompt or TONE_PROMPTS[strictness]
     if focus:
         system_prompt += f"\n\n**FOCUS AREA:** Pay special attention to: {focus}"
 
@@ -235,6 +293,7 @@ async def analyze_screenshot(
         "tokens_used": usage.get("total_tokens", 0),
         "image_size_kb": image_size_kb,
         "viewport": f"{VIEWPORT_W}x{VIEWPORT_H}",
+        "strictness": strictness,
     }
 
 
@@ -246,6 +305,7 @@ async def visual_report(
     file: str | None = None,
     url: str | None = None,
     focus: str | None = None,
+    strictness: int = DEFAULT_STRICTNESS,
     viewport_w: int = VIEWPORT_W,
     viewport_h: int = VIEWPORT_H,
     full_page: bool = True,
@@ -271,7 +331,7 @@ async def visual_report(
 
     # Step 2: Vision analysis
     try:
-        result = await analyze_screenshot(screenshot, focus=focus)
+        result = await analyze_screenshot(screenshot, focus=focus, strictness=strictness)
     except httpx.ConnectError:
         return {
             "error": "Cannot connect to vision model. Is LM Studio running? "

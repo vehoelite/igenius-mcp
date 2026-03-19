@@ -436,6 +436,13 @@ VISUAL_TOOLS: list[Tool] = [
                     "type": "string",
                     "description": "Optional focus area for the analysis (e.g. 'navbar alignment', 'mobile layout', 'color contrast').",
                 },
+                "strictness": {
+                    "type": "integer",
+                    "description": "How critical the review should be, 1-5. 1=gentle (mostly positive), 2=supportive (default), 3=balanced, 4=thorough, 5=brutal (nitpicks everything).",
+                    "minimum": 1,
+                    "maximum": 5,
+                    "default": 2,
+                },
                 "viewport_width": {
                     "type": "integer",
                     "description": "Browser viewport width in pixels (default: 1280).",
@@ -668,6 +675,8 @@ async def _dispatch_visual(name: str, args: dict[str, Any]) -> Any:
     if name == "visual_report":
         if args.get("focus"):
             kwargs["focus"] = args["focus"]
+        if args.get("strictness"):
+            kwargs["strictness"] = int(args["strictness"])
         return await _visual_report(**kwargs)
 
     elif name == "visual_screenshot":
