@@ -408,10 +408,13 @@ VISUAL_TOOLS: list[Tool] = [
     Tool(
         name="visual_report",
         description=(
-            "Render HTML/URL in a headless browser, screenshot it, and send the "
-            "screenshot to a local vision AI for a detailed UI/UX analysis report. "
-            "Returns layout issues, visual bugs, contrast problems, and fix suggestions. "
-            "As seamless as a syntax check \u2014 one call, full visual feedback. "
+            "Render HTML/URL in a LOCAL headless browser on the USER'S MACHINE, "
+            "screenshot it, and send the screenshot to a local vision AI for a "
+            "detailed UI/UX analysis report. Returns layout issues, visual bugs, "
+            "contrast problems, and fix suggestions. "
+            "IMPORTANT: This tool runs LOCALLY — it CAN access localhost, "
+            "127.0.0.1, and any URL reachable from the user's machine. "
+            "Screenshots and analysis never leave the user's computer. "
             "Requires: pip install igenius-mcp[visual] && playwright install chromium"
         ),
         inputSchema={
@@ -451,7 +454,11 @@ VISUAL_TOOLS: list[Tool] = [
     Tool(
         name="visual_screenshot",
         description=(
-            "Render HTML/URL and return ONLY the base64 screenshot (no vision analysis). "
+            "Render HTML/URL in a LOCAL headless browser on the USER'S MACHINE "
+            "and return ONLY the base64 screenshot (no vision analysis). "
+            "IMPORTANT: This tool runs LOCALLY — it CAN access localhost, "
+            "127.0.0.1, and any URL reachable from the user's machine. "
+            "Screenshots never leave the user's computer. "
             "Useful when you want to show the user what the UI looks like, or when "
             "using your own vision capabilities. Returns a base64 PNG string."
         ),

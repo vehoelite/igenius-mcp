@@ -33,8 +33,15 @@ import httpx
 
 VISION_URL = os.environ.get("IGENIUS_VISION_URL", "http://localhost:1234/v1")
 VISION_MODEL = os.environ.get("IGENIUS_VISION_MODEL", "")
+VISION_API_KEY = os.environ.get("IGENIUS_VISION_KEY", "")
 VIEWPORT_W = int(os.environ.get("IGENIUS_VIEWPORT_W", "1280"))
 VIEWPORT_H = int(os.environ.get("IGENIUS_VIEWPORT_H", "900"))
+
+def _vision_headers() -> dict[str, str]:
+    """Build auth headers for the vision model endpoint."""
+    if VISION_API_KEY:
+        return {"Authorization": f"Bearer {VISION_API_KEY}"}
+    return {}
 
 # Default system prompt for vision analysis
 ANALYSIS_PROMPT = """You are an expert UI/UX reviewer analyzing a screenshot of a web interface.
@@ -179,7 +186,9 @@ async def analyze_screenshot(
     if focus:
         system_prompt += f"\n\n**FOCUS AREA:** Pay special attention to: {focus}"
 
-    async with httpx.AsyncClient(base_url=VISION_URL, timeout=120.0) as client:
+    async with httpx.AsyncClient(
+        base_url=VISION_URL, timeout=120.0, headers=_vision_headers()
+    ) as client:
         model = VISION_MODEL or await _detect_vision_model(client)
         if not model:
             return {

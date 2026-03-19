@@ -109,6 +109,8 @@ memory tools become available to Copilot and any MCP-compatible agent.
 | `memory_pin` | Pin a fact permanently (user-confirmed, never expires) |
 | `memory_triggers_list` | List trigger words and their layers |
 | `memory_triggers_add` | Add a new trigger word |
+| `visual_report` | Render URL → screenshot → vision analysis → full UI/UX report *(requires `[visual]`)* |
+| `visual_screenshot` | Render URL → return base64 PNG *(requires `[visual]`)* |
 
 ## LLM Requirements
 
@@ -177,6 +179,7 @@ Then load a vision-capable model in [LM Studio](https://lmstudio.ai)
 |----------|---------|-------------|
 | `IGENIUS_VISION_URL` | `http://localhost:1234/v1` | Vision model API endpoint |
 | `IGENIUS_VISION_MODEL` | *auto-detect* | Override the vision model name |
+| `IGENIUS_VISION_KEY` | — | API key for vision endpoint (e.g. LM Studio auth token) |
 | `IGENIUS_VIEWPORT_W` | `1280` | Screenshot viewport width |
 | `IGENIUS_VIEWPORT_H` | `800` | Screenshot viewport height |
 
