@@ -111,7 +111,7 @@ Structure your report as:
 Be specific and unforgiving. Reference exact positions. Provide CSS/HTML fixes for every issue found.""",
 }
 
-DEFAULT_STRICTNESS = 2
+DEFAULT_STRICTNESS = int(os.environ.get("IGENIUS_VISUAL_STRICTNESS", "2"))
 
 
 # ─── Renderer ───────────────────────────────────────────────────────────────────
