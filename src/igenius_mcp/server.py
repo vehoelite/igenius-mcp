@@ -1,9 +1,13 @@
 """
-iGenius MCP Server — Thin REST-API proxy.
+iGenius MCP Server — Client-side LLM proxy.
 
-Exposes all 14 iGenius Memory tools as MCP tools by forwarding requests to the
-hosted API at igenius-memory.online. Core memory tools require only an API key.
-Optional visual tools add local Playwright rendering and vision-model analysis.
+Exposes all iGenius Memory tools as MCP tools.  LLM-dependent operations
+(ingest, consolidate, process, summarize) use a **prepare → local-LLM →
+finalize** flow so no AI model is needed on the server.
+
+The client calls the server's ``/xxx/prepare`` endpoint to get a prompt,
+runs the prompt through a local OpenAI-compatible LLM (e.g. LM Studio,
+Ollama, vLLM), then sends the result back via ``/xxx/finalize``.
 
 Usage:
     pip install igenius-mcp
@@ -16,7 +20,9 @@ Or configure in VS Code mcp.json:
           "command": "igenius-mcp",
           "env": {
             "IGENIUS_API_KEY": "ig_xxx",
-            "IGENIUS_PROJECT": "my-app"
+            "IGENIUS_PROJECT": "my-app",
+            "IGENIUS_LLM_BASE_URL": "http://localhost:1234/v1",
+            "IGENIUS_LLM_MODEL": "auto"
           },
           "type": "stdio"
         }
@@ -24,12 +30,12 @@ Or configure in VS Code mcp.json:
     }
 
 Environment Variables:
-    IGENIUS_API_KEY    — Required. Your API key.
-    IGENIUS_API_URL    — Optional. Override the API base URL (default: igenius-memory.online).
-    IGENIUS_PROJECT    — Optional. Default project scope for all memory operations.
-                         Used as a fallback when the agent doesn't pass a project
-                         parameter. Great for smaller models (1B-4B) that may not
-                         consistently pass the project field.
+    IGENIUS_API_KEY      — Required. Your API key.
+    IGENIUS_API_URL      — Optional. Override the API base URL (default: igenius-memory.online).
+    IGENIUS_PROJECT      — Optional. Default project scope for all memory operations.
+    IGENIUS_LLM_BASE_URL — Optional. OpenAI-compatible base URL (default: http://localhost:1234/v1).
+    IGENIUS_LLM_MODEL    — Optional. Model name or "auto" to detect first loaded model (default: auto).
+    IGENIUS_LLM_API_KEY  — Optional. API key for the local LLM (default: lm-studio).
 """
 
 from __future__ import annotations
@@ -37,6 +43,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import sys
 from typing import Any
 
@@ -50,12 +57,10 @@ from mcp.types import TextContent, Tool
 API_BASE = os.environ.get("IGENIUS_API_URL", "https://igenius-memory.online/v1")
 API_KEY = os.environ.get("IGENIUS_API_KEY", "")
 
-# LLM override env vars — forwarded as X-LLM-* headers so the server uses
-# the user's chosen model instead of the server-side default.
-LLM_PROVIDER = os.environ.get("IGENIUS_LLM_PROVIDER", "")
-LLM_MODEL = os.environ.get("IGENIUS_LLM_MODEL", "")
-LLM_API_KEY = os.environ.get("IGENIUS_LLM_API_KEY", "")
-LLM_BASE_URL = os.environ.get("IGENIUS_LLM_BASE_URL", "")
+# Local LLM configuration (OpenAI-compatible endpoint)
+LLM_BASE_URL = os.environ.get("IGENIUS_LLM_BASE_URL", "http://localhost:1234/v1")
+LLM_MODEL = os.environ.get("IGENIUS_LLM_MODEL", "auto")
+LLM_API_KEY = os.environ.get("IGENIUS_LLM_API_KEY", "lm-studio")
 
 if not API_KEY:
     print(
@@ -64,7 +69,7 @@ if not API_KEY:
         file=sys.stderr,
     )
 
-# ─── HTTP Client ────────────────────────────────────────────────────────────────
+# ─── HTTP Client (API server) ──────────────────────────────────────────────────
 
 _client: httpx.AsyncClient | None = None
 
@@ -72,26 +77,99 @@ _client: httpx.AsyncClient | None = None
 def _get_client() -> httpx.AsyncClient:
     global _client
     if _client is None or _client.is_closed:
-        headers = {
-            "X-API-Key": API_KEY,
-            "Content-Type": "application/json",
-            "User-Agent": "iGenius-MCP/0.1.0",
-        }
-        # Inject LLM override headers when configured
-        if LLM_PROVIDER:
-            headers["X-LLM-Provider"] = LLM_PROVIDER
-        if LLM_MODEL:
-            headers["X-LLM-Model"] = LLM_MODEL
-        if LLM_API_KEY:
-            headers["X-LLM-Api-Key"] = LLM_API_KEY
-        if LLM_BASE_URL:
-            headers["X-LLM-Base-Url"] = LLM_BASE_URL
         _client = httpx.AsyncClient(
             base_url=API_BASE,
-            headers=headers,
+            headers={
+                "X-API-Key": API_KEY,
+                "Content-Type": "application/json",
+                "User-Agent": "iGenius-MCP/0.5.5",
+            },
             timeout=120.0,
         )
     return _client
+
+
+# ─── Local LLM Client ──────────────────────────────────────────────────────────
+
+_llm_client: httpx.AsyncClient | None = None
+_resolved_model: str | None = None
+
+
+def _get_llm_client() -> httpx.AsyncClient:
+    global _llm_client
+    if _llm_client is None or _llm_client.is_closed:
+        _llm_client = httpx.AsyncClient(
+            base_url=LLM_BASE_URL,
+            headers={
+                "Authorization": f"Bearer {LLM_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            timeout=300.0,
+        )
+    return _llm_client
+
+
+async def _resolve_model() -> str:
+    """Resolve the model name. If 'auto', pick the first loaded model."""
+    global _resolved_model
+    if _resolved_model:
+        return _resolved_model
+    if LLM_MODEL and LLM_MODEL.lower() != "auto":
+        _resolved_model = LLM_MODEL
+        return _resolved_model
+    # Auto-detect: query /v1/models
+    client = _get_llm_client()
+    try:
+        resp = await client.get("/models")
+        resp.raise_for_status()
+        models = resp.json().get("data", [])
+        # Filter out embedding models
+        chat_models = [
+            m["id"] for m in models
+            if "embed" not in m["id"].lower()
+        ]
+        if chat_models:
+            _resolved_model = chat_models[0]
+        elif models:
+            _resolved_model = models[0]["id"]
+        else:
+            raise RuntimeError("No models loaded in local LLM server")
+    except httpx.ConnectError:
+        raise RuntimeError(
+            f"Cannot connect to local LLM at {LLM_BASE_URL}. "
+            "Start LM Studio / Ollama or set IGENIUS_LLM_BASE_URL."
+        )
+    return _resolved_model
+
+
+async def _call_local_llm(
+    system_prompt: str,
+    user_content: str,
+    *,
+    temperature: float = 0.2,
+    max_tokens: int = 1024,
+    response_format: dict | None = None,
+) -> str:
+    """Call the local OpenAI-compatible LLM and return the response text."""
+    model = await _resolve_model()
+    client = _get_llm_client()
+
+    payload: dict[str, Any] = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content},
+        ],
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+    if response_format:
+        payload["response_format"] = response_format
+
+    resp = await client.post("/chat/completions", json=payload)
+    resp.raise_for_status()
+    data = resp.json()
+    return data["choices"][0]["message"]["content"]
 
 
 async def _api(method: str, path: str, body: dict | None = None) -> dict:
@@ -507,13 +585,9 @@ VISUAL_TOOLS: list[Tool] = [
 ROUTE_MAP: dict[str, tuple[str, str]] = {
     # name → (HTTP method, path template)
     "memory_briefing":       ("GET",  "/briefing"),
-    "memory_ingest":         ("POST", "/ingest"),
-    "memory_consolidate":    ("POST", "/consolidate"),
-    "memory_process":        ("POST", "/process"),
     "memory_store":          ("POST", "/memories"),
     "memory_search":         ("GET",  "/memories/search"),
     "memory_recall":         ("GET",  "/memories/layer/short_term"),
-    "memory_summarize":      ("POST", "/memories/summarize"),
     "memory_delete":         ("DELETE", "/memories/{memory_id}"),
     "memory_update":         ("PATCH",  "/memories/{memory_id}"),
     "memory_review":         ("GET",  "/memories/review"),
@@ -522,6 +596,9 @@ ROUTE_MAP: dict[str, tuple[str, str]] = {
     "memory_triggers_add":   ("POST", "/triggers"),
     "memory_pin":            ("POST", "/memories"),
 }
+
+# Tools that go through prepare → local LLM → finalize
+LLM_TOOLS = {"memory_ingest", "memory_consolidate", "memory_process", "memory_summarize"}
 
 
 def _has_playwright() -> bool:
@@ -547,6 +624,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         # Visual tools run locally — not proxied to REST
         if name in ("visual_report", "visual_screenshot"):
             result = await _dispatch_visual(name, arguments)
+        elif name in LLM_TOOLS:
+            result = await _dispatch_llm(name, arguments)
         else:
             result = await _dispatch(name, arguments)
         return [TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
@@ -559,6 +638,134 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         return [TextContent(type="text", text=json.dumps({"error": str(detail), "status": e.response.status_code}))]
     except Exception as e:
         return [TextContent(type="text", text=json.dumps({"error": str(e)}))]
+
+
+async def _dispatch_llm(name: str, args: dict[str, Any]) -> Any:
+    """Route LLM-dependent tools through prepare → local LLM → finalize."""
+    client = _get_client()
+
+    # Resolve project scope (same logic as _dispatch)
+    _NO_PROJECT = object()
+    project = args.pop("project", _NO_PROJECT)
+    if project is _NO_PROJECT:
+        project = os.environ.get("IGENIUS_PROJECT")
+    elif not project:
+        project = None
+
+    if name == "memory_ingest":
+        # Step 1: prepare
+        body = {"message": args["message"], "role": args.get("role", "user")}
+        if project:
+            body["project"] = project
+        resp = await client.post("/ingest/prepare", json=body)
+        resp.raise_for_status()
+        prep = resp.json()
+        if not prep.get("ready"):
+            return prep  # e.g. empty message
+
+        # Step 2: call local LLM
+        llm_response = await _call_local_llm(
+            prep["system_prompt"],
+            prep["user_content"],
+            temperature=prep.get("temperature", 0.15),
+            max_tokens=prep.get("max_tokens", 1024),
+            response_format=prep.get("response_format"),
+        )
+
+        # Step 3: finalize
+        resp = await client.post("/ingest/finalize", json={
+            "llm_response": llm_response,
+            "metadata": prep["metadata"],
+        })
+        resp.raise_for_status()
+        return resp.json()
+
+    elif name == "memory_consolidate":
+        # Step 1: prepare
+        params: dict[str, str] = {}
+        if args.get("force"):
+            params["force"] = "true"
+        if project:
+            params["project"] = project
+        resp = await client.post("/consolidate/prepare", params=params)
+        resp.raise_for_status()
+        prep = resp.json()
+        if not prep.get("ready"):
+            return prep.get("fallback_response", prep)
+
+        # Step 2: call local LLM
+        llm_response = await _call_local_llm(
+            prep["system_prompt"],
+            prep["user_content"],
+            temperature=prep.get("temperature", 0.25),
+            max_tokens=prep.get("max_tokens", 4096),
+        )
+
+        # Step 3: finalize
+        resp = await client.post("/consolidate/finalize", json={
+            "llm_response": llm_response,
+            "metadata": prep["metadata"],
+        })
+        resp.raise_for_status()
+        return resp.json()
+
+    elif name == "memory_process":
+        # Step 1: prepare
+        resp = await client.post("/process/prepare", json={"text": args["text"]})
+        resp.raise_for_status()
+        prep = resp.json()
+        if not prep.get("ready"):
+            return prep
+
+        # Step 2: call local LLM
+        llm_response = await _call_local_llm(
+            prep["system_prompt"],
+            prep["user_content"],
+            temperature=prep.get("temperature", 0.2),
+            max_tokens=prep.get("max_tokens", 1024),
+            response_format=prep.get("response_format"),
+        )
+
+        # Step 3: finalize
+        resp = await client.post("/process/finalize", json={
+            "llm_response": llm_response,
+            "metadata": prep["metadata"],
+        })
+        resp.raise_for_status()
+        return resp.json()
+
+    elif name == "memory_summarize":
+        # Step 1: prepare
+        params = {}
+        if args.get("layer"):
+            params["layer"] = args["layer"]
+        if args.get("limit"):
+            params["limit"] = str(args["limit"])
+        if project:
+            params["project"] = project
+        resp = await client.post("/memories/summarize/prepare", params=params)
+        resp.raise_for_status()
+        prep = resp.json()
+        if not prep.get("ready"):
+            return prep
+
+        # Step 2: call local LLM
+        llm_response = await _call_local_llm(
+            prep["system_prompt"],
+            prep["user_content"],
+            temperature=prep.get("temperature", 0.3),
+            max_tokens=prep.get("max_tokens", 2048),
+        )
+
+        # Step 3: finalize
+        resp = await client.post("/memories/summarize/finalize", json={
+            "llm_response": llm_response,
+            "metadata": prep["metadata"],
+        })
+        resp.raise_for_status()
+        return resp.json()
+
+    return {"error": f"Unknown LLM tool: {name}"}
 
 
 async def _dispatch(name: str, args: dict[str, Any]) -> Any:

@@ -7,4 +7,4 @@ by proxying all requests through the hosted REST API.
 No database, no LLM, no server logic — just a clean MCP ↔ REST bridge.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.6.0"
